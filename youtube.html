@@ -2,9 +2,186 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>Yokai YouTube Wrapper</title>
+<style>
+    html, body {
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background: #000;
+    }
+
+    #player {
+        position: fixed;
+        left: 0;
+        top: 0;
+        width: 100vw;
+        height: 100vh;
+        background: #000;
+    }
+
+    #error {
+        display: none;
+        position: fixed;
+        left: 0;
+        top: 0;
+        width: 100vw;
+        height: 100vh;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        font-family: Arial, sans-serif;
+        font-size: 22px;
+        text-align: center;
+        background: #000;
+    }
+</style>
 </head>
 <body>
-Yokai YouTube Wrapper
+    <div id="player"></div>
+    <div id="error">YouTube video failed to load</div>
+
+<script>
+(function() {
+    function hashParam(name) {
+        var hash = String(window.location.hash || "").replace(/^#/, "");
+        var parts = hash.split("&");
+
+        for (var i = 0; i < parts.length; i++) {
+            var pair = parts[i].split("=");
+            if (decodeURIComponent(pair[0] || "") === name) {
+                return decodeURIComponent(pair.slice(1).join("=") || "");
+            }
+        }
+
+        return "";
+    }
+
+    function pageOrigin() {
+        return window.location.protocol + "//" + window.location.host;
+    }
+
+    var videoID = hashParam("v");
+    var offset = Math.max(0, parseFloat(hashParam("t")) || 0);
+    var player = null;
+    var ready = false;
+    var durationReported = false;
+    var error = document.getElementById("error");
+
+    // Yokai Lua sync treats this as a video-like object.
+    var wrapper = {
+        readyState: 0,
+        get paused() {
+            if (!ready || !player || !player.getPlayerState) return true;
+            return player.getPlayerState() !== YT.PlayerState.PLAYING;
+        },
+        get duration() {
+            if (!ready || !player || !player.getDuration) return 0;
+            return player.getDuration() || 0;
+        },
+        get currentTime() {
+            if (!ready || !player || !player.getCurrentTime) return 0;
+            return player.getCurrentTime() || 0;
+        },
+        set currentTime(time) {
+            if (!ready || !player || !player.seekTo) return;
+            player.seekTo(Math.max(0, time || 0), true);
+        },
+        play: function() {
+            if (ready && player && player.playVideo) {
+                player.playVideo();
+            }
+        },
+        pause: function() {
+            if (ready && player && player.pauseVideo) {
+                player.pauseVideo();
+            }
+        }
+    };
+
+    window.YokaiVideo = wrapper;
+    window.MediaPlayer = wrapper;
+
+    function showError(msg) {
+        console.log("[YOKAI VIDEO YOUTUBE] " + msg);
+        error.style.display = "flex";
+    }
+
+    function reportDuration() {
+        if (durationReported || !ready) return;
+
+        var duration = wrapper.duration;
+        if (isFinite(duration) && duration > 0) {
+            durationReported = true;
+            console.log("[YOKAI VIDEO YOUTUBE] duration: " + duration);
+            if (typeof Yokai !== "undefined" && Yokai.Duration) {
+                Yokai.Duration(duration);
+            }
+        }
+    }
+
+    window.onYouTubeIframeAPIReady = function() {
+        if (!videoID) {
+            showError("Missing YouTube video id");
+            return;
+        }
+
+        player = new YT.Player("player", {
+            width: "100%",
+            height: "100%",
+            videoId: videoID,
+            host: "https://www.youtube-nocookie.com",
+            playerVars: {
+                autoplay: 1,
+                controls: 0,
+                disablekb: 1,
+                enablejsapi: 1,
+                playsinline: 1,
+                rel: 0,
+                modestbranding: 1,
+                origin: pageOrigin(),
+                widget_referrer: pageOrigin(),
+                start: Math.floor(offset)
+            },
+            events: {
+                onReady: function() {
+                    ready = true;
+                    wrapper.readyState = 4;
+
+                    if (offset > 0) {
+                        player.seekTo(offset, true);
+                    }
+
+                    player.playVideo();
+                    reportDuration();
+                },
+                onStateChange: function(event) {
+                    if (event.data === YT.PlayerState.PLAYING) {
+                        reportDuration();
+                    }
+
+                    if (event.data === YT.PlayerState.ENDED) {
+                        console.log("[YOKAI VIDEO YOUTUBE] video ended");
+                        if (typeof Yokai !== "undefined" && Yokai.Close) {
+                            Yokai.Close();
+                        }
+                    }
+                },
+                onError: function(event) {
+                    showError("YouTube player error: " + event.data);
+                }
+            }
+        });
+    };
+
+    var script = document.createElement("script");
+    script.src = "https://www.youtube.com/iframe_api";
+    script.onerror = function() {
+        showError("Failed to load YouTube IFrame API");
+    };
+    document.head.appendChild(script);
+})();
+</script>
 </body>
 </html>
