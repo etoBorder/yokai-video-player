@@ -14,11 +14,21 @@
 
     #player {
         position: fixed;
-        left: -4vw;
-        top: -4vh;
-        width: 108vw;
-        height: 108vh;
+        left: 0;
+        top: 0;
+        width: 100vw;
+        height: 100vh;
+        overflow: hidden;
         background: #000;
+    }
+
+    #player iframe {
+        position: absolute;
+        left: -4%;
+        top: -4%;
+        width: 108% !important;
+        height: 108% !important;
+        pointer-events: none;
     }
 
     #error {
