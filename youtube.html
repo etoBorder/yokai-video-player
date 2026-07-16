@@ -18,17 +18,7 @@
         top: 0;
         width: 100vw;
         height: 100vh;
-        overflow: hidden;
         background: #000;
-    }
-
-    #player iframe {
-        position: absolute;
-        left: -4%;
-        top: -4%;
-        width: 108% !important;
-        height: 108% !important;
-        pointer-events: none;
     }
 
     #error {
@@ -82,6 +72,8 @@
     var ready = false;
     var durationReported = false;
     var error = document.getElementById("error");
+    var desiredVolume = 1;
+    var desiredMuted = false;
 
     // Yokai Lua sync treats this as a video-like object.
     var wrapper = {
@@ -111,11 +103,35 @@
             if (ready && player && player.pauseVideo) {
                 player.pauseVideo();
             }
+        },
+        setYokaiVolume: function(volume, muted) {
+            applyVolume(volume, muted);
         }
     };
 
     window.YokaiVideo = wrapper;
     window.MediaPlayer = wrapper;
+
+    function applyVolume(volume, muted) {
+        volume = Math.max(0, Math.min(1, Number(volume) || 0));
+        muted = !!muted || volume <= 0;
+        desiredVolume = volume;
+        desiredMuted = muted;
+
+        if (!ready || !player) return;
+
+        if (player.setVolume) {
+            player.setVolume(Math.round(volume * 100));
+        }
+
+        if (muted && player.mute) {
+            player.mute();
+        } else if (!muted && player.unMute) {
+            player.unMute();
+        }
+    }
+
+    window.YokaiSetVolume = applyVolume;
 
     function showError(msg) {
         console.log("[YOKAI VIDEO YOUTUBE] " + msg);
@@ -145,7 +161,6 @@
             width: "100%",
             height: "100%",
             videoId: videoID,
-            host: "https://www.youtube-nocookie.com",
             playerVars: {
                 autoplay: 1,
                 cc_load_policy: 0,
@@ -171,6 +186,7 @@
                     }
 
                     player.playVideo();
+                    applyVolume(desiredVolume, desiredMuted);
                     reportDuration();
                 },
                 onStateChange: function(event) {
