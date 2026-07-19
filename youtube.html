@@ -81,6 +81,7 @@
     var stateNames = {};
     var terminalError = false;
     var hostIndex = 0;
+    var playerAttempt = 0;
     var hosts = [
         "https://www.youtube-nocookie.com",
         "https://www.youtube.com"
@@ -215,12 +216,53 @@
         document.getElementById("player").innerHTML = "";
     }
 
+    function isGraceError(code) {
+        return code === 101 || code === 150 || code === 153;
+    }
+
     function shouldRetryWithNextHost(code) {
         return (code === 101 || code === 150 || code === 153) && hostIndex < hosts.length - 1;
     }
 
+    function isPlayerPlaying() {
+        try {
+            return ready && player && player.getPlayerState && player.getPlayerState() === YT.PlayerState.PLAYING;
+        } catch (e) {
+            return false;
+        }
+    }
+
+    function finalizePlayerError(code, host, attempt) {
+        if (attempt !== playerAttempt) {
+            log("ignored stale YouTube player error: " + code + " for old attempt");
+            return;
+        }
+
+        if (isPlayerPlaying()) {
+            log("ignored delayed YouTube player error: " + code + " because playback started");
+            hideError();
+            reportDuration();
+            return;
+        }
+
+        showError("YouTube player error: " + code + " (" + errorHint(code) + ")");
+        logSnapshot("error " + code);
+
+        if (shouldRetryWithNextHost(code) && hostIndex < hosts.length - 1) {
+            log("retrying with fallback host after grace: " + hosts[hostIndex + 1]);
+            createPlayer(hostIndex + 1);
+            return;
+        }
+
+        log("final YouTube player error: " + code + " on host=" + host);
+        terminalError = true;
+        ready = false;
+        wrapper.readyState = 0;
+    }
+
     function createPlayer(index) {
         hostIndex = index;
+        playerAttempt++;
         terminalError = false;
         hideError();
         resetPlayerContainer();
@@ -280,20 +322,17 @@
                 onError: function(event) {
                     var code = Number(event.data || 0);
                     log("YouTube player error: " + code + " (" + errorHint(code) + ") on host=" + host);
-                    showError("YouTube player error: " + code + " (" + errorHint(code) + ")");
-                    logSnapshot("error " + code);
 
-                    if (shouldRetryWithNextHost(code)) {
-                        log("retrying with fallback host: " + hosts[hostIndex + 1]);
+                    if (isGraceError(code)) {
+                        log("waiting before finalizing YouTube player error: " + code);
+                        var attempt = playerAttempt;
                         setTimeout(function() {
-                            createPlayer(hostIndex + 1);
-                        }, 250);
+                            finalizePlayerError(code, host, attempt);
+                        }, 1800);
                         return;
                     }
 
-                    terminalError = true;
-                    ready = false;
-                    wrapper.readyState = 0;
+                    finalizePlayerError(code, host, playerAttempt);
                 }
             }
         });
