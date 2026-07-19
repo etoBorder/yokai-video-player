@@ -80,12 +80,7 @@
     var error = document.getElementById("error");
     var stateNames = {};
     var terminalError = false;
-    var hostIndex = 0;
-    var playerAttempt = 0;
-    var hosts = [
-        "https://www.youtube-nocookie.com",
-        "https://www.youtube.com"
-    ];
+    var youtubeHost = "https://www.youtube-nocookie.com";
 
     function log(msg) {
         console.log("[YOKAI VIDEO YOUTUBE] " + msg);
@@ -220,10 +215,6 @@
         return code === 101 || code === 150 || code === 153;
     }
 
-    function shouldRetryWithNextHost(code) {
-        return (code === 101 || code === 150 || code === 153) && hostIndex < hosts.length - 1;
-    }
-
     function isPlayerPlaying() {
         try {
             return ready && player && player.getPlayerState && player.getPlayerState() === YT.PlayerState.PLAYING;
@@ -232,12 +223,7 @@
         }
     }
 
-    function finalizePlayerError(code, host, attempt) {
-        if (attempt !== playerAttempt) {
-            log("ignored stale YouTube player error: " + code + " for old attempt");
-            return;
-        }
-
+    function finalizePlayerError(code, host) {
         if (isPlayerPlaying()) {
             log("ignored delayed YouTube player error: " + code + " because playback started");
             hideError();
@@ -248,26 +234,18 @@
         showError("YouTube player error: " + code + " (" + errorHint(code) + ")");
         logSnapshot("error " + code);
 
-        if (shouldRetryWithNextHost(code) && hostIndex < hosts.length - 1) {
-            log("retrying with fallback host after grace: " + hosts[hostIndex + 1]);
-            createPlayer(hostIndex + 1);
-            return;
-        }
-
         log("final YouTube player error: " + code + " on host=" + host);
         terminalError = true;
         ready = false;
         wrapper.readyState = 0;
     }
 
-    function createPlayer(index) {
-        hostIndex = index;
-        playerAttempt++;
+    function createPlayer() {
         terminalError = false;
         hideError();
         resetPlayerContainer();
 
-        var host = hosts[hostIndex];
+        var host = youtubeHost;
         log("creating player: host=" + host + " start=" + Math.floor(offset));
 
         player = new YT.Player("player", {
@@ -325,14 +303,13 @@
 
                     if (isGraceError(code)) {
                         log("waiting before finalizing YouTube player error: " + code);
-                        var attempt = playerAttempt;
                         setTimeout(function() {
-                            finalizePlayerError(code, host, attempt);
+                            finalizePlayerError(code, host);
                         }, 3500);
                         return;
                     }
 
-                    finalizePlayerError(code, host, playerAttempt);
+                    finalizePlayerError(code, host);
                 }
             }
         });
@@ -347,7 +324,7 @@
             return;
         }
 
-        createPlayer(0);
+        createPlayer();
     };
 
     var script = document.createElement("script");
