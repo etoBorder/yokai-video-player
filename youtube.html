@@ -169,6 +169,20 @@
             if (ready && player && player.pauseVideo) {
                 player.pauseVideo();
             }
+        },
+        setYokaiVolume: function(volume, muted) {
+            if (!ready || !player) return;
+
+            try {
+                volume = Math.max(0, Math.min(1, Number(volume) || 0));
+                player.setVolume(Math.round(volume * 100));
+
+                if (muted || volume <= 0) {
+                    player.mute();
+                } else {
+                    player.unMute();
+                }
+            } catch (e) {}
         }
     };
 
@@ -189,9 +203,9 @@
 
         var duration = wrapper.duration;
         if (isFinite(duration) && duration > 0) {
-            durationReported = true;
             log("duration: " + duration);
             if (typeof Yokai !== "undefined" && Yokai.Duration) {
+                durationReported = true;
                 Yokai.Duration(duration);
             }
         }
