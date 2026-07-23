@@ -68,6 +68,20 @@
         return "";
     }
 
+    function queryParam(name) {
+        var query = String(window.location.search || "").replace(/^\?/, "");
+        var parts = query.split("&");
+
+        for (var i = 0; i < parts.length; i++) {
+            var pair = parts[i].split("=");
+            if (decodeURIComponent(pair[0] || "") === name) {
+                return decodeURIComponent(pair.slice(1).join("=") || "");
+            }
+        }
+
+        return "";
+    }
+
     function pageOrigin() {
         return window.location.protocol + "//" + window.location.host;
     }
@@ -75,6 +89,7 @@
     var videoID = hashParam("v");
     var offset = Math.max(0, parseFloat(hashParam("t")) || 0);
     var preloadMode = hashParam("preload") === "1";
+    var debug = hashParam("debug") === "1" || queryParam("debug") === "1";
     var player = null;
     var ready = false;
     var durationReported = false;
@@ -84,6 +99,12 @@
     var youtubeHost = "https://www.youtube-nocookie.com";
 
     function log(msg) {
+        if (!debug) return;
+
+        console.log("[YOKAI VIDEO YOUTUBE] " + msg);
+    }
+
+    function errorLog(msg) {
         console.log("[YOKAI VIDEO YOUTUBE] " + msg);
     }
 
@@ -111,22 +132,23 @@
         return "unknown YouTube iframe error";
     }
 
-    function logSnapshot(label) {
+    function logSnapshot(label, force) {
         var state = "no-player";
         var duration = 0;
         var currentTime = 0;
         var iframeCount = document.querySelectorAll("#player iframe").length;
+        var logger = force ? errorLog : log;
 
         try {
             if (player && player.getPlayerState) state = describeState(player.getPlayerState());
             if (player && player.getDuration) duration = player.getDuration() || 0;
             if (player && player.getCurrentTime) currentTime = player.getCurrentTime() || 0;
         } catch (e) {
-            log(label + " snapshot error: " + e);
+            logger(label + " snapshot error: " + e);
             return;
         }
 
-        log(label + " snapshot: ready=" + ready
+        logger(label + " snapshot: ready=" + ready
             + " state=" + state
             + " time=" + Number(currentTime || 0).toFixed(3)
             + " duration=" + Number(duration || 0).toFixed(3)
@@ -190,7 +212,7 @@
     window.MediaPlayer = wrapper;
 
     function showError(msg) {
-        log(msg);
+        errorLog(msg);
         error.style.display = "flex";
     }
 
@@ -217,7 +239,7 @@
                 player.destroy();
             }
         } catch (e) {
-            log("player destroy error: " + e);
+            errorLog("player destroy error: " + e);
         }
 
         player = null;
@@ -247,9 +269,9 @@
         }
 
         showError("YouTube player error: " + code + " (" + errorHint(code) + ")");
-        logSnapshot("error " + code);
+        logSnapshot("error " + code, true);
 
-        log("final YouTube player error: " + code + " on host=" + host);
+        errorLog("final YouTube player error: " + code + " on host=" + host);
         terminalError = true;
         ready = false;
         wrapper.readyState = 0;
@@ -298,7 +320,7 @@
                                 startSeconds: offset
                             });
                         } catch (e) {
-                            log("preload cue error: " + e);
+                            errorLog("preload cue error: " + e);
                         }
 
                         reportDuration();
@@ -331,7 +353,7 @@
                 },
                 onError: function(event) {
                     var code = Number(event.data || 0);
-                    log("YouTube player error: " + code + " (" + errorHint(code) + ") on host=" + host);
+                    errorLog("YouTube player error: " + code + " (" + errorHint(code) + ") on host=" + host);
 
                     if (isGraceError(code)) {
                         log("waiting before finalizing YouTube player error: " + code);
