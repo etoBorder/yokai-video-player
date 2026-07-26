@@ -98,6 +98,7 @@
     var error = document.getElementById("error");
     var stateNames = {};
     var terminalError = false;
+    var playbackStartToken = 0;
     var youtubeHost = "https://www.youtube-nocookie.com";
 
     function log(msg) {
@@ -324,6 +325,38 @@
         }
     }
 
+    function startPlaybackBurst() {
+        if (preloadMode) return;
+
+        var token = ++playbackStartToken;
+        var delays = [0, 250, 750, 1500, 2500];
+
+        function queueAttempt(index) {
+            setTimeout(function() {
+                if (token !== playbackStartToken) return;
+                if (terminalError || !ready || !player) return;
+                if (isPlayerPlaying()) return;
+
+                try {
+                    if (offset >= initialSeekThreshold && player.seekTo) {
+                        player.seekTo(offset, true);
+                    }
+
+                    if (player.playVideo) {
+                        log("play burst attempt: " + (index + 1));
+                        player.playVideo();
+                    }
+                } catch (e) {
+                    log("play burst failed: " + e);
+                }
+            }, delays[index]);
+        }
+
+        for (var i = 0; i < delays.length; i++) {
+            queueAttempt(i);
+        }
+    }
+
     function finalizePlayerError(code, host) {
         if (isPlayerPlaying()) {
             log("ignored delayed YouTube player error: " + code + " because playback started");
@@ -400,7 +433,7 @@
                         player.seekTo(offset, true);
                     }
 
-                    player.playVideo();
+                    startPlaybackBurst();
                     reportDuration();
                     setTimeout(function() { logSnapshot("post-ready"); }, 1000);
                 },
@@ -408,6 +441,7 @@
                     log("state change: " + describeState(event.data));
 
                     if (event.data === YT.PlayerState.PLAYING) {
+                        playbackStartToken++;
                         if (subtitlesEnabled) {
                             applySubtitles();
                         }
