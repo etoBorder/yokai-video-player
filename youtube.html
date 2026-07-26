@@ -90,6 +90,7 @@
     var offset = Math.max(0, parseFloat(hashParam("t")) || 0);
     var initialSeekThreshold = 0.25;
     var preloadMode = hashParam("preload") === "1";
+    var falseStartPreload = preloadMode && hashParam("falseStart") === "1";
     var subtitlesEnabled = hashParam("subtitles") === "1";
     var debug = hashParam("debug") === "1" || queryParam("debug") === "1";
     var player = null;
@@ -99,6 +100,8 @@
     var stateNames = {};
     var terminalError = false;
     var playbackStartToken = 0;
+    var falseStartFinished = false;
+    var preloadActivated = false;
     var youtubeHost = "https://www.youtube-nocookie.com";
 
     function log(msg) {
@@ -159,7 +162,7 @@
             + " origin=" + pageOrigin());
     }
 
-    log("wrapper boot: videoID=" + videoID + " offset=" + offset.toFixed(3) + " preload=" + preloadMode + " subtitles=" + subtitlesEnabled + " origin=" + pageOrigin());
+    log("wrapper boot: videoID=" + videoID + " offset=" + offset.toFixed(3) + " preload=" + preloadMode + " falseStart=" + falseStartPreload + " subtitles=" + subtitlesEnabled + " origin=" + pageOrigin());
 
     // Yokai Lua sync treats this as a video-like object.
     var wrapper = {
@@ -186,8 +189,9 @@
         },
         play: function() {
             if (terminalError) return;
-            if (ready && player && player.playVideo) {
-                player.playVideo();
+            if (ready && player) {
+                if (preloadMode) preloadActivated = true;
+                startPlaybackBurst(true);
             }
         },
         pause: function() {
@@ -325,8 +329,8 @@
         }
     }
 
-    function startPlaybackBurst() {
-        if (preloadMode) return;
+    function startPlaybackBurst(allowPreload) {
+        if (preloadMode && allowPreload !== true) return;
 
         var token = ++playbackStartToken;
         var delays = [0, 250, 750, 1500, 2500];
@@ -355,6 +359,26 @@
         for (var i = 0; i < delays.length; i++) {
             queueAttempt(i);
         }
+    }
+
+    function finishFalseStartPreload(force) {
+        if (!falseStartPreload || !ready || !player) return;
+        if (falseStartFinished && force !== true) return;
+
+        falseStartFinished = true;
+        playbackStartToken++;
+
+        try {
+            if (player.pauseVideo) player.pauseVideo();
+            if (player.seekTo) player.seekTo(offset, true);
+            if (player.mute) player.mute();
+            if (player.setVolume) player.setVolume(0);
+        } catch (e) {
+            log("false start finish failed: " + e);
+        }
+
+        reportDuration();
+        setTimeout(function() { logSnapshot("false-start-ready"); }, 250);
     }
 
     function finalizePlayerError(code, host) {
@@ -415,10 +439,20 @@
                         try {
                             player.mute();
                             player.setVolume(0);
-                            player.cueVideoById({
-                                videoId: videoID,
-                                startSeconds: offset
-                            });
+
+                            if (falseStartPreload) {
+                                if (offset >= initialSeekThreshold) {
+                                    player.seekTo(offset, true);
+                                }
+
+                                startPlaybackBurst(true);
+                                setTimeout(finishFalseStartPreload, 3000);
+                            } else {
+                                player.cueVideoById({
+                                    videoId: videoID,
+                                    startSeconds: offset
+                                });
+                            }
                         } catch (e) {
                             errorLog("preload cue error: " + e);
                         }
@@ -442,6 +476,13 @@
 
                     if (event.data === YT.PlayerState.PLAYING) {
                         playbackStartToken++;
+
+                        if (preloadMode && falseStartPreload && !preloadActivated) {
+                            reportDuration();
+                            setTimeout(function() { finishFalseStartPreload(true); }, 900);
+                            return;
+                        }
+
                         if (subtitlesEnabled) {
                             applySubtitles();
                         }
