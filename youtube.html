@@ -228,6 +228,25 @@
         error.style.display = "none";
     }
 
+    function selectAutomaticSubtitleTrack() {
+        if (!ready || !player || !subtitlesEnabled) return;
+
+        try {
+            var trackList = [];
+
+            if (player.getOption) {
+                trackList = player.getOption("captions", "tracklist") || [];
+            }
+
+            if (trackList.length > 0 && player.setOption) {
+                player.setOption("captions", "track", trackList[0]);
+                log("subtitles track selected: " + (trackList[0].languageCode || "auto"));
+            }
+        } catch (e) {
+            log("subtitles track select failed: " + e);
+        }
+    }
+
     function applySubtitles() {
         if (!ready || !player) return;
 
@@ -235,6 +254,9 @@
             if (subtitlesEnabled) {
                 if (player.loadModule) player.loadModule("captions");
                 if (player.loadModule) player.loadModule("cc");
+
+                setTimeout(selectAutomaticSubtitleTrack, 250);
+                setTimeout(selectAutomaticSubtitleTrack, 1000);
             } else {
                 if (player.setOption) player.setOption("captions", "track", {});
                 if (player.unloadModule) player.unloadModule("captions");
