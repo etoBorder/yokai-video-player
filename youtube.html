@@ -89,6 +89,7 @@
     var videoID = hashParam("v");
     var offset = Math.max(0, parseFloat(hashParam("t")) || 0);
     var preloadMode = hashParam("preload") === "1";
+    var subtitlesEnabled = hashParam("subtitles") === "1";
     var debug = hashParam("debug") === "1" || queryParam("debug") === "1";
     var player = null;
     var ready = false;
@@ -156,7 +157,7 @@
             + " origin=" + pageOrigin());
     }
 
-    log("wrapper boot: videoID=" + videoID + " offset=" + offset.toFixed(3) + " preload=" + preloadMode + " origin=" + pageOrigin());
+    log("wrapper boot: videoID=" + videoID + " offset=" + offset.toFixed(3) + " preload=" + preloadMode + " subtitles=" + subtitlesEnabled + " origin=" + pageOrigin());
 
     // Yokai Lua sync treats this as a video-like object.
     var wrapper = {
@@ -205,11 +206,18 @@
                     player.unMute();
                 }
             } catch (e) {}
+        },
+        setYokaiSubtitles: function(enabled) {
+            subtitlesEnabled = enabled === true;
+            applySubtitles();
         }
     };
 
     window.YokaiVideo = wrapper;
     window.MediaPlayer = wrapper;
+    window.YokaiSetSubtitles = function(enabled) {
+        wrapper.setYokaiSubtitles(enabled === true);
+    };
 
     function showError(msg) {
         errorLog(msg);
@@ -218,6 +226,23 @@
 
     function hideError() {
         error.style.display = "none";
+    }
+
+    function applySubtitles() {
+        if (!ready || !player) return;
+
+        try {
+            if (subtitlesEnabled) {
+                if (player.loadModule) player.loadModule("captions");
+                if (player.loadModule) player.loadModule("cc");
+            } else {
+                if (player.setOption) player.setOption("captions", "track", {});
+                if (player.unloadModule) player.unloadModule("captions");
+                if (player.unloadModule) player.unloadModule("cc");
+            }
+        } catch (e) {
+            log("subtitles toggle failed: " + e);
+        }
     }
 
     function reportDuration() {
@@ -292,7 +317,7 @@
             host: host,
             playerVars: {
                 autoplay: preloadMode ? 0 : 1,
-                cc_load_policy: 0,
+                cc_load_policy: subtitlesEnabled ? 1 : 0,
                 controls: 0,
                 disablekb: 1,
                 enablejsapi: 1,
@@ -310,6 +335,7 @@
                     ready = true;
                     wrapper.readyState = 4;
                     log("player ready");
+                    applySubtitles();
 
                     if (preloadMode) {
                         try {
@@ -341,6 +367,7 @@
                     log("state change: " + describeState(event.data));
 
                     if (event.data === YT.PlayerState.PLAYING) {
+                        applySubtitles();
                         reportDuration();
                     }
 
