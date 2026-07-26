@@ -407,7 +407,9 @@
                     log("state change: " + describeState(event.data));
 
                     if (event.data === YT.PlayerState.PLAYING) {
-                        applySubtitles();
+                        if (subtitlesEnabled) {
+                            applySubtitles();
+                        }
                         reportDuration();
                     }
 
