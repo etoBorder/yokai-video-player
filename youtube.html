@@ -277,8 +277,6 @@
                 setTimeout(selectAutomaticSubtitleTrack, 1000);
             } else {
                 if (player.setOption) player.setOption("captions", "track", {});
-                if (player.unloadModule) player.unloadModule("captions");
-                if (player.unloadModule) player.unloadModule("cc");
             }
         } catch (e) {
             log("subtitles toggle failed: " + e);
@@ -375,7 +373,9 @@
                     ready = true;
                     wrapper.readyState = 4;
                     log("player ready");
-                    applySubtitles();
+                    if (subtitlesEnabled) {
+                        applySubtitles();
+                    }
 
                     if (preloadMode) {
                         try {
