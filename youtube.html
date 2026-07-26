@@ -88,9 +88,7 @@
 
     var videoID = hashParam("v");
     var offset = Math.max(0, parseFloat(hashParam("t")) || 0);
-    var initialSeekThreshold = 0.25;
     var preloadMode = hashParam("preload") === "1";
-    var subtitlesEnabled = hashParam("subtitles") === "1";
     var debug = hashParam("debug") === "1" || queryParam("debug") === "1";
     var player = null;
     var ready = false;
@@ -98,7 +96,6 @@
     var error = document.getElementById("error");
     var stateNames = {};
     var terminalError = false;
-    var playbackStartToken = 0;
     var youtubeHost = "https://www.youtube-nocookie.com";
 
     function log(msg) {
@@ -159,7 +156,7 @@
             + " origin=" + pageOrigin());
     }
 
-    log("wrapper boot: videoID=" + videoID + " offset=" + offset.toFixed(3) + " preload=" + preloadMode + " subtitles=" + subtitlesEnabled + " origin=" + pageOrigin());
+    log("wrapper boot: videoID=" + videoID + " offset=" + offset.toFixed(3) + " preload=" + preloadMode + " origin=" + pageOrigin());
 
     // Yokai Lua sync treats this as a video-like object.
     var wrapper = {
@@ -208,18 +205,11 @@
                     player.unMute();
                 }
             } catch (e) {}
-        },
-        setYokaiSubtitles: function(enabled) {
-            subtitlesEnabled = enabled === true;
-            applySubtitles();
         }
     };
 
     window.YokaiVideo = wrapper;
     window.MediaPlayer = wrapper;
-    window.YokaiSetSubtitles = function(enabled) {
-        wrapper.setYokaiSubtitles(enabled === true);
-    };
 
     function showError(msg) {
         errorLog(msg);
@@ -228,61 +218,6 @@
 
     function hideError() {
         error.style.display = "none";
-    }
-
-    function selectAutomaticSubtitleTrack() {
-        if (!ready || !player || !subtitlesEnabled) return;
-
-        try {
-            var trackList = [];
-            var languagePriority = ["ru", "en"];
-            var selectedTrack = null;
-
-            if (player.getOption) {
-                trackList = player.getOption("captions", "tracklist") || [];
-            }
-
-            for (var priorityIndex = 0; priorityIndex < languagePriority.length && !selectedTrack; priorityIndex++) {
-                var preferredLanguage = languagePriority[priorityIndex];
-
-                for (var trackIndex = 0; trackIndex < trackList.length; trackIndex++) {
-                    var track = trackList[trackIndex] || {};
-                    var languageCode = String(track.languageCode || "").toLowerCase();
-
-                    if (languageCode === preferredLanguage || languageCode.indexOf(preferredLanguage + "-") === 0) {
-                        selectedTrack = track;
-                        break;
-                    }
-                }
-            }
-
-            if (selectedTrack && player.setOption) {
-                player.setOption("captions", "track", selectedTrack);
-                log("subtitles track selected: " + (selectedTrack.languageCode || "auto"));
-            } else {
-                log("subtitles track skipped: no ru/en track");
-            }
-        } catch (e) {
-            log("subtitles track select failed: " + e);
-        }
-    }
-
-    function applySubtitles() {
-        if (!ready || !player) return;
-
-        try {
-            if (subtitlesEnabled) {
-                if (player.loadModule) player.loadModule("captions");
-                if (player.loadModule) player.loadModule("cc");
-
-                setTimeout(selectAutomaticSubtitleTrack, 250);
-                setTimeout(selectAutomaticSubtitleTrack, 1000);
-            } else {
-                if (player.setOption) player.setOption("captions", "track", {});
-            }
-        } catch (e) {
-            log("subtitles toggle failed: " + e);
-        }
     }
 
     function reportDuration() {
@@ -325,38 +260,6 @@
         }
     }
 
-    function startPlaybackBurst() {
-        if (preloadMode) return;
-
-        var token = ++playbackStartToken;
-        var delays = [0, 250, 750, 1500, 2500];
-
-        function queueAttempt(index) {
-            setTimeout(function() {
-                if (token !== playbackStartToken) return;
-                if (terminalError || !ready || !player) return;
-                if (isPlayerPlaying()) return;
-
-                try {
-                    if (offset >= initialSeekThreshold && player.seekTo) {
-                        player.seekTo(offset, true);
-                    }
-
-                    if (player.playVideo) {
-                        log("play burst attempt: " + (index + 1));
-                        player.playVideo();
-                    }
-                } catch (e) {
-                    log("play burst failed: " + e);
-                }
-            }, delays[index]);
-        }
-
-        for (var i = 0; i < delays.length; i++) {
-            queueAttempt(i);
-        }
-    }
-
     function finalizePlayerError(code, host) {
         if (isPlayerPlaying()) {
             log("ignored delayed YouTube player error: " + code + " because playback started");
@@ -389,7 +292,7 @@
             host: host,
             playerVars: {
                 autoplay: preloadMode ? 0 : 1,
-                cc_load_policy: subtitlesEnabled ? 1 : 0,
+                cc_load_policy: 0,
                 controls: 0,
                 disablekb: 1,
                 enablejsapi: 1,
@@ -407,9 +310,6 @@
                     ready = true;
                     wrapper.readyState = 4;
                     log("player ready");
-                    if (subtitlesEnabled) {
-                        applySubtitles();
-                    }
 
                     if (preloadMode) {
                         try {
@@ -428,12 +328,12 @@
                         return;
                     }
 
-                    if (offset >= initialSeekThreshold) {
+                    if (offset > 0) {
                         log("initial seek: " + offset.toFixed(3));
                         player.seekTo(offset, true);
                     }
 
-                    startPlaybackBurst();
+                    player.playVideo();
                     reportDuration();
                     setTimeout(function() { logSnapshot("post-ready"); }, 1000);
                 },
@@ -441,10 +341,6 @@
                     log("state change: " + describeState(event.data));
 
                     if (event.data === YT.PlayerState.PLAYING) {
-                        playbackStartToken++;
-                        if (subtitlesEnabled) {
-                            applySubtitles();
-                        }
                         reportDuration();
                     }
 
