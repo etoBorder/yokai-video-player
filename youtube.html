@@ -233,14 +233,32 @@
 
         try {
             var trackList = [];
+            var languagePriority = ["ru", "en"];
+            var selectedTrack = null;
 
             if (player.getOption) {
                 trackList = player.getOption("captions", "tracklist") || [];
             }
 
-            if (trackList.length > 0 && player.setOption) {
-                player.setOption("captions", "track", trackList[0]);
-                log("subtitles track selected: " + (trackList[0].languageCode || "auto"));
+            for (var priorityIndex = 0; priorityIndex < languagePriority.length && !selectedTrack; priorityIndex++) {
+                var preferredLanguage = languagePriority[priorityIndex];
+
+                for (var trackIndex = 0; trackIndex < trackList.length; trackIndex++) {
+                    var track = trackList[trackIndex] || {};
+                    var languageCode = String(track.languageCode || "").toLowerCase();
+
+                    if (languageCode === preferredLanguage || languageCode.indexOf(preferredLanguage + "-") === 0) {
+                        selectedTrack = track;
+                        break;
+                    }
+                }
+            }
+
+            if (selectedTrack && player.setOption) {
+                player.setOption("captions", "track", selectedTrack);
+                log("subtitles track selected: " + (selectedTrack.languageCode || "auto"));
+            } else {
+                log("subtitles track skipped: no ru/en track");
             }
         } catch (e) {
             log("subtitles track select failed: " + e);
