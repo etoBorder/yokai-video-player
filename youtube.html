@@ -88,6 +88,7 @@
 
     var videoID = hashParam("v");
     var offset = Math.max(0, parseFloat(hashParam("t")) || 0);
+    var initialSeekThreshold = 0.25;
     var preloadMode = hashParam("preload") === "1";
     var subtitlesEnabled = hashParam("subtitles") === "1";
     var debug = hashParam("debug") === "1" || queryParam("debug") === "1";
@@ -394,7 +395,7 @@
                         return;
                     }
 
-                    if (offset > 0) {
+                    if (offset >= initialSeekThreshold) {
                         log("initial seek: " + offset.toFixed(3));
                         player.seekTo(offset, true);
                     }
